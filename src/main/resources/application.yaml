@@ -9,7 +9,8 @@ spring:
     username: root
     password: Jiangmh220
   redis:
-    host: 127.26.96.1
+    host: 172.17.224.1 # 使用windows下redis
+#    host: 192.168.85.150 # 使用linux下的reids
     port: 6379
     password:
     lettuce:

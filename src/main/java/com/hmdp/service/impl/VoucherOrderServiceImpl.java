@@ -8,8 +8,10 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
      */
     @Resource
     private ISeckillVoucherService seckillVoucherService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 注入id生成器
@@ -58,14 +63,23 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         // 获取用户id
         Long userId = UserHolder.getUser().getId();
-        /**
-         * @implNote 同一个用户加同一把锁，不同用户加不同锁
-         * */
-        synchronized (userId.toString().intern()) {
+        // 创建锁对象
+        SimpleRedisLock lock = new SimpleRedisLock("order:" + userId, stringRedisTemplate);
+        // 获取锁
+        boolean isLock = lock.tryLock(1200);
+        // 判断是否获取锁成功
+        if (!isLock) {
+            // 获取锁失败，返回错误或重试
+            return Result.fail("不允许重复下单");
+        }
+        try {
             // 防止事务失效，获取当前代理类接口的代理对象
             IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             // 必须确保先提交事务最后释放锁，所以才锁定用户的id字符串常量池返回的值
             return proxy.createVoucherOrder(voucherId);
+        } finally {
+            // 释放锁
+            lock.unlock();
         }
     }
 

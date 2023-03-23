@@ -1,7 +1,11 @@
 package com.hmdp.utils;
 
+import cn.hutool.core.lang.UUID;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -12,17 +16,41 @@ import java.util.concurrent.TimeUnit;
 public class SimpleRedisLock implements ILock {
     private String name;
     private StringRedisTemplate stringRedisTemplate;
+
     /**
      * 锁对象构造器
-     * @param name 锁名
+     *
+     * @param name                锁名
      * @param stringRedisTemplate redis操作
-     * */
+     */
     public SimpleRedisLock(String name, StringRedisTemplate stringRedisTemplate) {
         this.name = name;
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
     private static final String KEY_PREFIX = "lock:";
+
+    /**
+     * 线程的唯一锁标识
+     */
+    private static final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
+
+    /**
+     * 加载Lua脚本
+     */
+    private static final DefaultRedisScript<Long> UNLOCK_CRIPT;
+
+    /**
+     * 静态代码块初始化脚本
+     * */
+    static {
+        // 类首次加载时初始化
+        UNLOCK_CRIPT = new DefaultRedisScript<>();
+        // 指定脚本位置
+        UNLOCK_CRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        // 指定返回值类型
+        UNLOCK_CRIPT.setResultType(Long.class);
+    }
 
     /**
      * 尝试获取锁
@@ -33,11 +61,10 @@ public class SimpleRedisLock implements ILock {
     @Override
     public boolean tryLock(long timeoutSec) {
         String key = KEY_PREFIX + name;
-        // 获取当前线程标识
-        long threadId = Thread.currentThread().getId();
-        String value = threadId + "";
+        // 获取当前线程标识，即：value
+        String threadId = ID_PREFIX + Thread.currentThread().getId();
         // 获取锁
-        Boolean result = stringRedisTemplate.opsForValue().setIfAbsent(key, value, timeoutSec, TimeUnit.SECONDS);
+        Boolean result = stringRedisTemplate.opsForValue().setIfAbsent(key, threadId, timeoutSec, TimeUnit.SECONDS);
         // 防止自动拆箱时发生空指针异常
         return Boolean.TRUE.equals(result);
     }
@@ -48,7 +75,10 @@ public class SimpleRedisLock implements ILock {
     @Override
     public void unlock() {
         String key = KEY_PREFIX + name;
-        // 释放锁
-        stringRedisTemplate.delete(key);
+        // 获取当前线程标识，即：value
+        long value = Thread.currentThread().getId();
+        // 调用Lua脚本进行锁释放
+        System.out.println(UNLOCK_CRIPT == null);
+        stringRedisTemplate.execute(UNLOCK_CRIPT, Collections.singletonList(key), value);
     }
 }
