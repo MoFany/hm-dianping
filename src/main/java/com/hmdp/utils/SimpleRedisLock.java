@@ -38,18 +38,15 @@ public class SimpleRedisLock implements ILock {
     /**
      * 加载Lua脚本
      */
-    private static final DefaultRedisScript<Long> UNLOCK_CRIPT;
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
-    /**
-     * 静态代码块初始化脚本
-     * */
     static {
         // 类首次加载时初始化
-        UNLOCK_CRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
         // 指定脚本位置
-        UNLOCK_CRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("script/unlock.lua"));
         // 指定返回值类型
-        UNLOCK_CRIPT.setResultType(Long.class);
+        UNLOCK_SCRIPT.setResultType(Long.class);
     }
 
     /**
@@ -76,9 +73,8 @@ public class SimpleRedisLock implements ILock {
     public void unlock() {
         String key = KEY_PREFIX + name;
         // 获取当前线程标识，即：value
-        long value = Thread.currentThread().getId();
+        String value = ID_PREFIX + Thread.currentThread().getId();
         // 调用Lua脚本进行锁释放
-        System.out.println(UNLOCK_CRIPT == null);
-        stringRedisTemplate.execute(UNLOCK_CRIPT, Collections.singletonList(key), value);
+        stringRedisTemplate.execute(UNLOCK_SCRIPT, Collections.singletonList(key), value);
     }
 }
